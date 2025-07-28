@@ -8,7 +8,7 @@ import path from "path";
 import HttpsProxyAgent from "https-proxy-agent";
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 4000;
 const API_KEY = process.env.API_KEY || "SECRET_KEY_123";
 
 // ✅ Liste de proxys (séparés par virgule dans PROXY_LIST)
