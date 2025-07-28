@@ -5,10 +5,15 @@ import ffmpegPath from "ffmpeg-static";
 import { spawn } from "child_process";
 import fs from "fs";
 import path from "path";
+import HttpsProxyAgent from "https-proxy-agent";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.API_KEY || "SECRET_KEY_123";
+
+// ✅ Configuration Proxy
+const PROXY_URL = process.env.PROXY_URL || null;
+const agent = PROXY_URL ? new HttpsProxyAgent(PROXY_URL) : null;
 
 // ✅ Suppression sécurisée
 const safeDelete = (file) => {
@@ -21,7 +26,7 @@ const fallbackYtDlp = (url, format, res) => {
   console.log("⚠️ Utilisation fallback yt-dlp pour :", url);
 
   const yt = spawn("yt-dlp", [
-    format === "mp3" ? "-x" : "-f", 
+    format === "mp3" ? "-x" : "-f",
     format === "mp3" ? "--audio-format" : "best",
     format === "mp3" ? "mp3" : "",
     "-o", tempFile,
@@ -46,11 +51,8 @@ app.use((req, res, next) => {
 
 // ✅ Page test
 app.get("/", (req, res) => {
-  res.send("🚀 API YouTube Downloader (Pré-téléchargement + yt-dlp + nocache) prête !");
+  res.send("🚀 API YouTube Downloader (avec Proxy + yt-dlp fallback) prête !");
 });
-
-// Main index 
-
 
 // ✅ Route VIDÉO
 app.get("/video", async (req, res) => {
@@ -67,15 +69,15 @@ app.get("/video", async (req, res) => {
   });
 
   try {
+    const options = agent ? { requestOptions: { agent }, quality: "18" } : { quality: "18" };
+
     if (noCache) {
-      // ✅ Streaming direct (sans fichier temporaire)
       res.header("Content-Disposition", 'attachment; filename="video.mp4"');
-      return ytdl(url, { quality: "18" }).pipe(res);
+      return ytdl(url, options).pipe(res);
     }
 
-    // ✅ Mode pré-téléchargement
     const ws = fs.createWriteStream(tempFile);
-    ytdl(url, { quality: "18" })
+    ytdl(url, options)
       .pipe(ws)
       .on("finish", () => {
         res.sendFile(tempFile, (err) => {
@@ -106,15 +108,15 @@ app.get("/audio", (req, res) => {
   });
 
   try {
+    const options = agent ? { requestOptions: { agent }, filter: "audioonly", quality: "highestaudio" } : { filter: "audioonly", quality: "highestaudio" };
+
     if (noCache) {
-      // ✅ Streaming direct sans cache
       res.header("Content-Disposition", 'attachment; filename="audio.mp3"');
-      const stream = ytdl(url, { filter: "audioonly", quality: "highestaudio" });
+      const stream = ytdl(url, options);
       return ffmpeg(stream).setFfmpegPath(ffmpegPath).audioBitrate(128).format("mp3").pipe(res);
     }
 
-    // ✅ Pré-téléchargement avec conversion FFmpeg
-    const audioStream = ytdl(url, { filter: "audioonly", quality: "highestaudio" });
+    const audioStream = ytdl(url, options);
     ffmpeg(audioStream)
       .setFfmpegPath(ffmpegPath)
       .audioBitrate(128)
