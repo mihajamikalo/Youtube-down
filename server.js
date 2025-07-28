@@ -11,16 +11,28 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.API_KEY || "SECRET_KEY_123";
 
-// ✅ Configuration Proxy
-const PROXY_URL = process.env.PROXY_URL || null;
-const agent = PROXY_URL ? new HttpsProxyAgent(PROXY_URL) : null;
+// ✅ Liste de proxys (séparés par virgule dans PROXY_LIST)
+const proxyList = process.env.PROXY_LIST
+  ? process.env.PROXY_LIST.split(",").map(p => p.trim())
+  : [];
+
+let proxyIndex = 0;
+
+// ✅ Sélection d’un proxy avec rotation
+function getNextProxy() {
+  if (proxyList.length === 0) return null;
+  const proxy = proxyList[proxyIndex];
+  proxyIndex = (proxyIndex + 1) % proxyList.length;
+  console.log(`🔄 Utilisation du proxy : ${proxy}`);
+  return new HttpsProxyAgent(proxy);
+}
 
 // ✅ Suppression sécurisée
 const safeDelete = (file) => {
   if (fs.existsSync(file)) fs.unlinkSync(file);
 };
 
-// ✅ Fallback vers yt-dlp si ytdl échoue
+// ✅ Fallback yt-dlp
 const fallbackYtDlp = (url, format, res) => {
   const tempFile = path.resolve(`yt_${Date.now()}.${format}`);
   console.log("⚠️ Utilisation fallback yt-dlp pour :", url);
@@ -42,7 +54,7 @@ const fallbackYtDlp = (url, format, res) => {
   });
 };
 
-// ✅ Middleware sécurité : clé API
+// ✅ Middleware clé API
 app.use((req, res, next) => {
   const key = req.query.key;
   if (!key || key !== API_KEY) return res.status(401).json({ error: "🔒 Clé API invalide" });
@@ -51,8 +63,14 @@ app.use((req, res, next) => {
 
 // ✅ Page test
 app.get("/", (req, res) => {
-  res.send("🚀 API YouTube Downloader (avec Proxy + yt-dlp fallback) prête !");
+  res.send("🚀 API YouTube Downloader avec Rotation Proxy prête !");
 });
+
+// ✅ Fonction commune pour options ytdl
+function ytdlOptions(extra = {}) {
+  const agent = getNextProxy();
+  return agent ? { requestOptions: { agent }, ...extra } : extra;
+}
 
 // ✅ Route VIDÉO
 app.get("/video", async (req, res) => {
@@ -64,12 +82,12 @@ app.get("/video", async (req, res) => {
   console.log("🎬 Vidéo demandée :", url, "| nocache:", noCache);
 
   req.on("aborted", () => {
-    console.warn("⚠️ Téléchargement annulé par le client !");
+    console.warn("⚠️ Téléchargement annulé !");
     safeDelete(tempFile);
   });
 
   try {
-    const options = agent ? { requestOptions: { agent }, quality: "18" } : { quality: "18" };
+    const options = ytdlOptions({ quality: "18" });
 
     if (noCache) {
       res.header("Content-Disposition", 'attachment; filename="video.mp4"');
@@ -93,7 +111,7 @@ app.get("/video", async (req, res) => {
   }
 });
 
-// ✅ Route AUDIO MP3
+// ✅ Route AUDIO
 app.get("/audio", (req, res) => {
   const url = req.query.url;
   const noCache = req.query.nocache === "true";
@@ -108,7 +126,7 @@ app.get("/audio", (req, res) => {
   });
 
   try {
-    const options = agent ? { requestOptions: { agent }, filter: "audioonly", quality: "highestaudio" } : { filter: "audioonly", quality: "highestaudio" };
+    const options = ytdlOptions({ filter: "audioonly", quality: "highestaudio" });
 
     if (noCache) {
       res.header("Content-Disposition", 'attachment; filename="audio.mp3"');
@@ -135,4 +153,4 @@ app.get("/audio", (req, res) => {
   }
 });
 
-app.listen(PORT, () => console.log(`✅ Serveur API prêt sur http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`✅ Serveur API prêt avec rotation Proxy sur http://localhost:${PORT}`));
